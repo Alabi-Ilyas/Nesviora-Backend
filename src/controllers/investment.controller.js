@@ -1,10 +1,88 @@
 const Investment = require('../models/Investment');
+const InvestmentPlan = require('../models/InvestmentPlan');
+const Transaction = require('../models/Transaction');
+const User = require('../models/User');
+const { atomic } = require('../utils/atomic');
+const { toCents, percentOf } = require('../utils/money');
+const reference = require('../utils/reference');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok } = require('../utils/response');
 const { getPagination } = require('../utils/pagination');
 
-// ----- user (read-only) -----
+// ----- user -----
+// Invests from the wallet balance. The plan is re-read here and the amount re-checked against its
+// limits; the debit only succeeds if the balance covers amount + fee.
+exports.create = asyncHandler(async (req, res) => {
+  const { planId } = req.body;
+  const amountCents = toCents(req.body.amount);
+
+  const investment = await atomic(async (session) => {
+    const plan = await InvestmentPlan.findOne({ _id: planId, status: 'active' }).session(session || null);
+    if (!plan) throw new ApiError(404, 'Plan not found');
+
+    if (amountCents < toCents(plan.minAmount) || amountCents > toCents(plan.maxAmount)) {
+      throw new ApiError(400, `Amount must be between $${plan.minAmount} and $${plan.maxAmount} for this plan`);
+    }
+    const asset = req.body.asset || plan.supportedAssets[0] || 'USD';
+    if (plan.supportedAssets.length > 0 && !plan.supportedAssets.includes(asset)) {
+      throw new ApiError(400, 'This asset is not supported by the selected plan');
+    }
+
+    const feeCents = percentOf(amountCents, plan.fees); // plan.fees is a percentage, charged on top of the amount
+    const totalCents = amountCents + feeCents;
+
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id, balanceCents: { $gte: totalCents } },
+      { $inc: { balanceCents: -totalCents } },
+      { new: true, session }
+    );
+    if (!user) throw new ApiError(400, 'Insufficient balance');
+
+    const start = new Date();
+    const [inv] = await Investment.create(
+      [
+        {
+          userId: user._id,
+          planId: plan._id,
+          planName: plan.name,
+          principal: amountCents / 100,
+          currentValue: amountCents / 100,
+          startDate: start,
+          endDate: new Date(start.getTime() + plan.durationDays * 86400000),
+          status: 'active',
+          fees: feeCents / 100,
+          asset,
+          expectedReturnRate: plan.expectedReturnRate,
+        },
+      ],
+      { session }
+    );
+    await Transaction.create(
+      [
+        {
+          userId: user._id,
+          type: 'investment',
+          asset,
+          amountCents,
+          feeCents,
+          balanceAfterCents: user.balanceCents,
+          status: 'completed',
+          reference: reference('TXN'),
+          description: `Investment in ${plan.name} plan`,
+          refType: 'Investment',
+          refId: inv._id,
+        },
+      ],
+      { session }
+    );
+    return inv;
+  });
+
+  ok(res, investment, undefined, 201);
+});
+
+// ----- user (read) -----
 exports.listMine = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req.query);
   const filter = { userId: req.user.id };

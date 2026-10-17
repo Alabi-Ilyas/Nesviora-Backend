@@ -21,6 +21,8 @@ const userSchema = new mongoose.Schema(
       default: 'not_submitted',
     },
     avatar: { type: String, default: '' },
+    // Wallet balance in USD cents. Only changed by atomic $inc in the deposit/withdrawal/investment controllers.
+    balanceCents: { type: Number, default: 0, min: 0 },
     referralCode: { type: String, unique: true, index: true },
     twoFactorEnabled: { type: Boolean, default: false },
     preferences: {

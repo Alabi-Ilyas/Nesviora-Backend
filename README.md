@@ -33,9 +33,20 @@ Auth: `Authorization: Bearer <accessToken>`; refresh token is an httpOnly cookie
 Admin sub-roles: super_admin (everything), ops_admin, finance_admin (plans, investments),
 content_admin (testimonials), support_admin (chat). See `src/routes/admin.routes.js`.
 
+## Phase 2: wallet, deposits, withdrawals, investing
+Single USD balance per user (stored as integer cents on `User.balanceCents`; the API speaks dollars).
+**Wallet/ledger** `GET /api/wallet`, `GET /api/transactions`
+**Deposits** `POST|GET /api/deposits` (user submits, status `pending`); admin `GET /api/admin/deposits`,
+`PATCH /api/admin/deposits/:id` `{ status: confirmed|failed|cancelled, creditedAmount (USD, required to confirm), note }`
+**Withdrawals** `POST|GET /api/withdrawals` (debits amount + fee immediately); admin `GET /api/admin/withdrawals`,
+`PATCH /api/admin/withdrawals/:id` `{ status: processing|completed|rejected, hash (required for completed), note }` (rejected refunds)
+**Invest** `POST /api/investments` `{ planId, amount, asset? }` (debits amount + plan fee)
+**Settings** `GET /api/settings`; super_admin `PATCH /api/admin/settings` `{ fees, minWithdrawal }`
+Admin deposit/withdrawal/transaction routes need `finance_admin` (or `super_admin`).
+Money moves inside MongoDB transactions, which need a replica set (Atlas is one). Production refuses to start without it.
+
 ## Not in Phase 1
-Deposits, withdrawals, wallet addresses, approvals, portfolio/trades, creating investments,
-KYC, email (password reset/verification), notifications, mining plans, referrals.
+Portfolio/trades, return accrual and maturity payouts, 2FA, KYC, email (password reset/verification), notifications, mining plans, referrals.
 
 ## Before going live
 - Use long random JWT secrets, `NODE_ENV=production`, HTTPS, and set `CLIENT_URL` to the real frontend origin.

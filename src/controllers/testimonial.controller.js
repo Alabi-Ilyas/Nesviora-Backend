@@ -3,8 +3,14 @@ const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
 const { ok } = require('../utils/response');
 
+// Public: demo/placeholder entries are never exposed on the public site.
 exports.listPublic = asyncHandler(async (req, res) => {
-  ok(res, await Testimonial.find().sort({ date: -1 }).limit(50));
+  ok(res, await Testimonial.find({ isDemo: { $ne: true } }).sort({ date: -1 }).limit(50));
+});
+
+// Admin: everything, including demo entries, so they can be edited or deleted.
+exports.adminList = asyncHandler(async (req, res) => {
+  ok(res, await Testimonial.find().sort({ date: -1 }).limit(200));
 });
 
 exports.create = asyncHandler(async (req, res) => {

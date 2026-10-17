@@ -103,3 +103,76 @@ exports.investmentListQuery = z.object({
   userId: objectId.optional(),
 });
 exports.pageQuery = z.object(pageQuery);
+
+// ---- wallet: deposits, withdrawals, investing ----
+const { isTwoDecimals } = require('../utils/money');
+const usd = z
+  .number()
+  .positive('Amount must be greater than zero')
+  .max(100000000, 'Amount is too large')
+  .refine(isTwoDecimals, 'Amount can have at most 2 decimal places');
+const asset = z.string().trim().min(1).max(10);
+
+exports.createDeposit = z.object({
+  amount: z.number().positive().max(1000000000),
+  currency: asset,
+  method: z.string().trim().max(100).optional(),
+  txHash: z.string().trim().max(200).optional(),
+});
+exports.reviewDeposit = z
+  .object({
+    status: z.enum(['confirmed', 'failed', 'cancelled']),
+    note: z.string().trim().max(500).optional(),
+    creditedAmount: usd.optional(),
+  })
+  .refine((d) => d.status !== 'confirmed' || d.creditedAmount !== undefined, {
+    message: 'creditedAmount (the USD value to credit) is required to confirm a deposit',
+    path: ['creditedAmount'],
+  });
+exports.depositListQuery = z.object({
+  ...pageQuery,
+  status: z.enum(['pending', 'confirmed', 'failed', 'cancelled']).optional(),
+  userId: objectId.optional(),
+});
+
+exports.createWithdrawal = z.object({
+  amount: usd,
+  asset,
+  destinationAddress: z.string().trim().min(10, 'Enter a valid wallet address').max(200),
+  network: z.string().trim().max(30).optional().default(''),
+});
+exports.reviewWithdrawal = z
+  .object({
+    status: z.enum(['processing', 'completed', 'rejected']),
+    hash: z.string().trim().max(200).optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine((d) => d.status !== 'completed' || (d.hash && d.hash.length > 0), {
+    message: 'A transaction hash is required to mark a withdrawal completed',
+    path: ['hash'],
+  });
+exports.withdrawalListQuery = z.object({
+  ...pageQuery,
+  status: z.enum(['pending', 'processing', 'completed', 'rejected', 'cancelled']).optional(),
+  userId: objectId.optional(),
+});
+
+exports.createInvestment = z.object({ planId: objectId, amount: usd, asset: asset.optional() });
+
+exports.transactionListQuery = z.object({
+  ...pageQuery,
+  type: z.enum(['deposit', 'withdrawal', 'investment', 'mining', 'transfer', 'fee', 'adjustment', 'reward']).optional(),
+  status: z.enum(['completed', 'pending', 'failed', 'processing', 'cancelled', 'rejected']).optional(),
+  userId: objectId.optional(),
+});
+
+exports.updateSettings = z.object({
+  fees: z
+    .object({
+      depositFee: z.number().min(0).max(100).optional(),
+      withdrawalFee: z.number().min(0).max(100).optional(),
+      investmentFee: z.number().min(0).max(100).optional(),
+    })
+    .optional(),
+  minWithdrawal: z.number().min(0).max(100000000).optional(),
+});

@@ -8,6 +8,10 @@ const plans = require('../controllers/plan.controller');
 const investments = require('../controllers/investment.controller');
 const testimonials = require('../controllers/testimonial.controller');
 const support = require('../controllers/support.controller');
+const deposits = require('../controllers/deposit.controller');
+const withdrawals = require('../controllers/withdrawal.controller');
+const wallet = require('../controllers/wallet.controller');
+const settings = require('../controllers/settings.controller');
 
 // Every route here needs a signed-in admin. Role guards below narrow it per area
 // (super_admin passes all of them).
@@ -27,6 +31,17 @@ router.get(
 // ----- investments (read-only) -----
 router.get('/investments', requireAdmin('ops_admin', 'finance_admin'), validate({ query: v.investmentListQuery }), investments.adminList);
 
+// ----- money: deposits, withdrawals, ledger (finance_admin; super_admin always passes) -----
+const financeRoles = requireAdmin('finance_admin');
+router.get('/deposits', financeRoles, validate({ query: v.depositListQuery }), deposits.adminList);
+router.patch('/deposits/:id', financeRoles, validate({ params: v.idParam, body: v.reviewDeposit }), deposits.adminReview);
+router.get('/withdrawals', financeRoles, validate({ query: v.withdrawalListQuery }), withdrawals.adminList);
+router.patch('/withdrawals/:id', financeRoles, validate({ params: v.idParam, body: v.reviewWithdrawal }), withdrawals.adminReview);
+router.get('/transactions', financeRoles, validate({ query: v.transactionListQuery }), wallet.adminList);
+
+// ----- platform settings (fees) -----
+router.patch('/settings', requireAdmin('super_admin'), validate({ body: v.updateSettings }), settings.adminUpdate);
+
 // ----- plans -----
 const planRoles = requireAdmin('ops_admin', 'finance_admin');
 router.get('/plans', planRoles, plans.adminList);
@@ -36,6 +51,7 @@ router.delete('/plans/:id', planRoles, validate({ params: v.idParam }), plans.re
 
 // ----- testimonials -----
 const contentRoles = requireAdmin('content_admin', 'ops_admin');
+router.get('/testimonials', contentRoles, testimonials.adminList);
 router.post('/testimonials', contentRoles, validate({ body: v.createTestimonial }), testimonials.create);
 router.patch('/testimonials/:id', contentRoles, validate({ params: v.idParam, body: v.updateTestimonial }), testimonials.update);
 router.delete('/testimonials/:id', contentRoles, validate({ params: v.idParam }), testimonials.remove);
